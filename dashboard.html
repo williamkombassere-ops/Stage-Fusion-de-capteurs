@@ -1,0 +1,568 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Crazyflie — Dashboard temps réel</title>
+<style>
+  :root {
+    --bg:       #0a0e1a;
+    --panel:    #111827;
+    --border:   #1e2d45;
+    --accent:   #00d4ff;
+    --green:    #00ff88;
+    --orange:   #ff8c00;
+    --red:      #ff4444;
+    --text:     #e2e8f0;
+    --muted:    #64748b;
+    --gps-col:  #00d4ff;
+    --imu-col:  #00ff88;
+    --euler-col:#ff8c00;
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'JetBrains Mono', 'Fira Code', monospace;
+    min-height: 100vh;
+  }
+
+  /* ── Header ── */
+  header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 12px 24px;
+    border-bottom: 1px solid var(--border);
+    background: var(--panel);
+  }
+
+  .logo {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    font-size: 1rem;
+    font-weight: 700;
+    letter-spacing: 0.05em;
+    color: var(--accent);
+  }
+
+  .drone-icon {
+    width: 28px; height: 28px;
+    animation: spin 4s linear infinite;
+  }
+
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  .status-bar {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    font-size: 0.75rem;
+  }
+
+  .dot {
+    width: 8px; height: 8px;
+    border-radius: 50%;
+    background: var(--red);
+    transition: background 0.3s;
+  }
+  .dot.connected { background: var(--green); animation: pulse 1.5s infinite; }
+  @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.4} }
+
+  .ws-status { color: var(--muted); }
+  .ws-status.connected { color: var(--green); }
+
+  /* ── Layout ── */
+  .grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    grid-template-rows: auto auto auto;
+    gap: 12px;
+    padding: 12px;
+    height: calc(100vh - 57px);
+  }
+
+  .panel {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+  }
+
+  .panel-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 8px 14px;
+    border-bottom: 1px solid var(--border);
+    font-size: 0.72rem;
+    font-weight: 600;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+  }
+
+  .panel-label { color: var(--muted); }
+  .panel-value { font-size: 0.8rem; font-weight: 700; }
+
+  canvas { flex: 1; width: 100%; display: block; }
+
+  /* ── Stats bar ── */
+  .stats-row {
+    display: flex;
+    gap: 0;
+    border-top: 1px solid var(--border);
+  }
+
+  .stat {
+    flex: 1;
+    padding: 6px 10px;
+    border-right: 1px solid var(--border);
+    font-size: 0.68rem;
+  }
+  .stat:last-child { border-right: none; }
+  .stat-label { color: var(--muted); margin-bottom: 2px; }
+  .stat-val { font-weight: 700; font-size: 0.8rem; }
+
+  /* ── GPS map ── */
+  #gps-panel { grid-column: 1; grid-row: 1 / 3; }
+
+  /* ── Altitude ── */
+  #alt-panel { grid-column: 2; grid-row: 1; }
+
+  /* ── IMU accél ── */
+  #imu-panel { grid-column: 2; grid-row: 2; }
+
+  /* ── Euler ── */
+  #euler-panel { grid-column: 1 / 3; grid-row: 3; }
+
+  /* ── Connection overlay ── */
+  #overlay {
+    position: fixed; inset: 0;
+    background: rgba(10,14,26,0.92);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 16px;
+    z-index: 100;
+    transition: opacity 0.4s;
+  }
+  #overlay.hidden { opacity: 0; pointer-events: none; }
+
+  .connect-box {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 32px 40px;
+    text-align: center;
+    max-width: 360px;
+  }
+  .connect-box h2 { color: var(--accent); margin-bottom: 8px; }
+  .connect-box p  { color: var(--muted); font-size: 0.8rem; margin-bottom: 20px; }
+
+  input[type=text] {
+    width: 100%;
+    background: var(--bg);
+    border: 1px solid var(--border);
+    color: var(--text);
+    padding: 8px 12px;
+    border-radius: 6px;
+    font-family: inherit;
+    font-size: 0.85rem;
+    margin-bottom: 12px;
+    outline: none;
+  }
+  input:focus { border-color: var(--accent); }
+
+  button {
+    width: 100%;
+    background: var(--accent);
+    color: var(--bg);
+    border: none;
+    padding: 10px;
+    border-radius: 6px;
+    font-family: inherit;
+    font-weight: 700;
+    font-size: 0.9rem;
+    cursor: pointer;
+    letter-spacing: 0.05em;
+    transition: opacity 0.2s;
+  }
+  button:hover { opacity: 0.85; }
+
+  .err { color: var(--red); font-size: 0.75rem; margin-top: 8px; }
+</style>
+</head>
+<body>
+
+<!-- Connection overlay -->
+<div id="overlay">
+  <div class="connect-box">
+    <h2>🚁 Crazyflie Dashboard</h2>
+    <p>Connecte-toi au serveur rosbridge WebSocket</p>
+    <input type="text" id="ws-url" value="ws://localhost:9090" placeholder="ws://localhost:9090">
+    <button onclick="connect()">Connecter</button>
+    <div class="err" id="err-msg"></div>
+  </div>
+</div>
+
+<!-- Header -->
+<header>
+  <div class="logo">
+    <svg class="drone-icon" viewBox="0 0 28 28" fill="none">
+      <circle cx="7"  cy="7"  r="3" stroke="#00d4ff" stroke-width="1.5"/>
+      <circle cx="21" cy="7"  r="3" stroke="#00d4ff" stroke-width="1.5"/>
+      <circle cx="7"  cy="21" r="3" stroke="#00d4ff" stroke-width="1.5"/>
+      <circle cx="21" cy="21" r="3" stroke="#00d4ff" stroke-width="1.5"/>
+      <line x1="7" y1="7" x2="21" y2="21" stroke="#00d4ff" stroke-width="1"/>
+      <line x1="21" y1="7" x2="7" y2="21" stroke="#00d4ff" stroke-width="1"/>
+      <rect x="11" y="11" width="6" height="6" rx="1" fill="#00d4ff" opacity="0.6"/>
+    </svg>
+    CRAZYFLIE — LIVE DASHBOARD
+  </div>
+  <div class="status-bar">
+    <div class="dot" id="dot"></div>
+    <span class="ws-status" id="ws-label">Déconnecté</span>
+    <span style="color:var(--muted);font-size:0.7rem" id="hz-label">— Hz</span>
+  </div>
+</header>
+
+<!-- Grid -->
+<div class="grid">
+
+  <!-- GPS Trajectory -->
+  <div class="panel" id="gps-panel">
+    <div class="panel-header">
+      <span style="color:var(--gps-col)">▣ GPS — Trajectoire X/Y</span>
+      <button onclick="resetGps()" style="width:auto;padding:2px 8px;font-size:0.65rem;background:var(--border);color:var(--text)">Reset</button>
+    </div>
+    <canvas id="gps-canvas"></canvas>
+    <div class="stats-row">
+      <div class="stat"><div class="stat-label">LAT</div><div class="stat-val" id="s-lat">—</div></div>
+      <div class="stat"><div class="stat-label">LON</div><div class="stat-val" id="s-lon">—</div></div>
+      <div class="stat"><div class="stat-label">ALT</div><div class="stat-val" id="s-alt-gps">—</div></div>
+    </div>
+  </div>
+
+  <!-- Altitude Z -->
+  <div class="panel" id="alt-panel">
+    <div class="panel-header">
+      <span style="color:var(--green)">↕ Altitude Z (Odom)</span>
+      <span class="panel-value" id="z-val">— m</span>
+    </div>
+    <canvas id="alt-canvas"></canvas>
+  </div>
+
+  <!-- IMU -->
+  <div class="panel" id="imu-panel">
+    <div class="panel-header">
+      <span style="color:var(--imu-col)">⚡ IMU — Accélérations</span>
+      <span class="panel-value" id="imu-val">—</span>
+    </div>
+    <canvas id="imu-canvas"></canvas>
+    <div class="stats-row">
+      <div class="stat"><div class="stat-label">ax</div><div class="stat-val" id="s-ax" style="color:#00d4ff">—</div></div>
+      <div class="stat"><div class="stat-label">ay</div><div class="stat-val" id="s-ay" style="color:#ff8c00">—</div></div>
+      <div class="stat"><div class="stat-label">az</div><div class="stat-val" id="s-az" style="color:#00ff88">—</div></div>
+    </div>
+  </div>
+
+  <!-- Euler Angles -->
+  <div class="panel" id="euler-panel">
+    <div class="panel-header">
+      <span style="color:var(--euler-col)">🔄 Angles d'Euler (roll / pitch / yaw)</span>
+      <div style="display:flex;gap:16px;font-size:0.75rem">
+        <span style="color:#00d4ff">roll: <b id="s-roll">—</b>°</span>
+        <span style="color:#ff8c00">pitch: <b id="s-pitch">—</b>°</span>
+        <span style="color:#00ff88">yaw: <b id="s-yaw">—</b>°</span>
+      </div>
+    </div>
+    <canvas id="euler-canvas"></canvas>
+  </div>
+
+</div>
+
+<script>
+// ── WebSocket & ROS ───────────────────────────────────────────────────────────
+let ws = null;
+const MAX_PTS = 200;  // points max dans les graphes glissants
+
+// Buffers de données
+const buf = {
+  alt:   [],   // {t, z}
+  ax:    [], ay: [], az: [],
+  roll:  [], pitch: [], yaw: [],
+  gpsX:  [], gpsY: [],
+  gps0:  null,   // référence initiale GPS
+};
+
+// Fréquence
+let msgCount = 0, lastHz = Date.now();
+
+function connect() {
+  const url = document.getElementById('ws-url').value.trim();
+  document.getElementById('err-msg').textContent = '';
+
+  ws = new WebSocket(url);
+
+  ws.onopen = () => {
+    document.getElementById('overlay').classList.add('hidden');
+    document.getElementById('dot').classList.add('connected');
+    document.getElementById('ws-label').textContent = 'Connecté';
+    document.getElementById('ws-label').classList.add('connected');
+
+    subscribe('/crazyflie/gps',  'sensor_msgs/msg/NavSatFix');
+    subscribe('/crazyflie/imu',  'sensor_msgs/msg/Imu');
+    subscribe('/crazyflie/odom', 'nav_msgs/msg/Odometry');
+  };
+
+  ws.onmessage = (evt) => {
+    const msg = JSON.parse(evt.data);
+    if (msg.op === 'publish') onMessage(msg.topic, msg.msg);
+    msgCount++;
+  };
+
+  ws.onerror = () => {
+    document.getElementById('err-msg').textContent =
+      'Impossible de se connecter. Vérifie que rosbridge est lancé sur le port 9090.';
+  };
+
+  ws.onclose = () => {
+    document.getElementById('dot').classList.remove('connected');
+    document.getElementById('ws-label').textContent = 'Déconnecté';
+    document.getElementById('ws-label').classList.remove('connected');
+  };
+}
+
+function subscribe(topic, type) {
+  ws.send(JSON.stringify({ op: 'subscribe', topic, type }));
+}
+
+// ── Conversion quaternion → Euler ─────────────────────────────────────────────
+function quatToEuler(qx, qy, qz, qw) {
+  const roll  = Math.atan2(2*(qw*qx + qy*qz), 1 - 2*(qx*qx + qy*qy));
+  const pitch = Math.asin(Math.max(-1, Math.min(1, 2*(qw*qy - qz*qx))));
+  const yaw   = Math.atan2(2*(qw*qz + qx*qy), 1 - 2*(qy*qy + qz*qz));
+  return [roll, pitch, yaw].map(a => a * 180 / Math.PI);
+}
+
+// ── Conversion GPS → mètres ───────────────────────────────────────────────────
+const R_TERRE = 6371000;
+function gpsToMeters(lat, lon) {
+  if (!buf.gps0) { buf.gps0 = { lat, lon }; return [0, 0]; }
+  const lat0r = buf.gps0.lat * Math.PI / 180;
+  const dx = (lon - buf.gps0.lon) * Math.cos(lat0r) * (Math.PI / 180) * R_TERRE;
+  const dy = (lat - buf.gps0.lat) * (Math.PI / 180) * R_TERRE;
+  return [dx, dy];
+}
+
+function resetGps() { buf.gps0 = null; buf.gpsX = []; buf.gpsY = []; }
+
+// ── Réception des messages ─────────────────────────────────────────────────────
+function now() { return Date.now() / 1000; }
+
+function push(arr, val) {
+  arr.push(val);
+  if (arr.length > MAX_PTS) arr.shift();
+}
+
+function onMessage(topic, msg) {
+  if (topic === '/crazyflie/gps') {
+    const [dx, dy] = gpsToMeters(msg.latitude, msg.longitude);
+    push(buf.gpsX, dx);
+    push(buf.gpsY, dy);
+    document.getElementById('s-lat').textContent = msg.latitude.toFixed(6);
+    document.getElementById('s-lon').textContent = msg.longitude.toFixed(6);
+    document.getElementById('s-alt-gps').textContent = msg.altitude.toFixed(2) + ' m';
+  }
+
+  else if (topic === '/crazyflie/imu') {
+    const ax = msg.linear_acceleration.x;
+    const ay = msg.linear_acceleration.y;
+    const az = msg.linear_acceleration.z;
+    push(buf.ax, ax); push(buf.ay, ay); push(buf.az, az);
+    document.getElementById('s-ax').textContent = ax.toFixed(3);
+    document.getElementById('s-ay').textContent = ay.toFixed(3);
+    document.getElementById('s-az').textContent = az.toFixed(3);
+  }
+
+  else if (topic === '/crazyflie/odom') {
+    const z  = msg.pose.pose.position.z;
+    const q  = msg.pose.pose.orientation;
+    const [roll, pitch, yaw] = quatToEuler(q.x, q.y, q.z, q.w);
+    push(buf.alt, z);
+    push(buf.roll, roll); push(buf.pitch, pitch); push(buf.yaw, yaw);
+    document.getElementById('z-val').textContent   = z.toFixed(3) + ' m';
+    document.getElementById('s-roll').textContent  = roll.toFixed(1);
+    document.getElementById('s-pitch').textContent = pitch.toFixed(1);
+    document.getElementById('s-yaw').textContent   = yaw.toFixed(1);
+  }
+}
+
+// ── Rendu des canvas ──────────────────────────────────────────────────────────
+function resizeCanvas(c) {
+  const rect = c.parentElement.getBoundingClientRect();
+  const h    = rect.height - c.previousElementSibling.offsetHeight
+             - (c.nextElementSibling ? c.nextElementSibling.offsetHeight : 0);
+  if (c.width !== rect.width || c.height !== h) {
+    c.width  = rect.width;
+    c.height = Math.max(h, 60);
+  }
+}
+
+function drawLine(ctx, data, color, minV, maxV) {
+  if (data.length < 2) return;
+  const w = ctx.canvas.width, h = ctx.canvas.height;
+  const range = maxV - minV || 1;
+  ctx.beginPath();
+  ctx.strokeStyle = color;
+  ctx.lineWidth   = 1.5;
+  data.forEach((v, i) => {
+    const x = (i / (MAX_PTS - 1)) * w;
+    const y = h - ((v - minV) / range) * (h * 0.85) - h * 0.075;
+    i === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
+  });
+  ctx.stroke();
+}
+
+function drawGrid(ctx, color = '#1e2d45') {
+  const w = ctx.canvas.width, h = ctx.canvas.height;
+  ctx.strokeStyle = color;
+  ctx.lineWidth   = 0.5;
+  for (let i = 1; i < 4; i++) {
+    ctx.beginPath();
+    ctx.moveTo(0, h * i / 4);
+    ctx.lineTo(w, h * i / 4);
+    ctx.stroke();
+  }
+}
+
+// GPS map
+function drawGps() {
+  const c   = document.getElementById('gps-canvas');
+  resizeCanvas(c);
+  const ctx = c.getContext('2d');
+  ctx.fillStyle = '#0a0e1a';
+  ctx.fillRect(0, 0, c.width, c.height);
+  drawGrid(ctx);
+
+  if (buf.gpsX.length < 2) return;
+  const xs = buf.gpsX, ys = buf.gpsY;
+  const xMin = Math.min(...xs), xMax = Math.max(...xs);
+  const yMin = Math.min(...ys), yMax = Math.max(...ys);
+  const xR   = xMax - xMin || 1, yR = yMax - yMin || 1;
+  const pad  = 30;
+
+  const toX = v => pad + ((v - xMin) / xR) * (c.width  - 2*pad);
+  const toY = v => c.height - pad - ((v - yMin) / yR) * (c.height - 2*pad);
+
+  // Trajectoire
+  ctx.beginPath();
+  ctx.strokeStyle = '#00d4ff';
+  ctx.lineWidth   = 1.8;
+  xs.forEach((x, i) => {
+    i === 0 ? ctx.moveTo(toX(x), toY(ys[i])) : ctx.lineTo(toX(x), toY(ys[i]));
+  });
+  ctx.stroke();
+
+  // Point courant
+  const lx = toX(xs[xs.length-1]), ly = toY(ys[ys.length-1]);
+  ctx.beginPath();
+  ctx.arc(lx, ly, 5, 0, Math.PI*2);
+  ctx.fillStyle = '#00ff88';
+  ctx.fill();
+
+  // Axes labels
+  ctx.fillStyle = '#64748b';
+  ctx.font      = '9px monospace';
+  ctx.fillText('X (m)', c.width - 30, c.height - 4);
+  ctx.fillText('Y', 4, 12);
+}
+
+// Altitude
+function drawAlt() {
+  const c   = document.getElementById('alt-canvas');
+  resizeCanvas(c);
+  const ctx = c.getContext('2d');
+  ctx.fillStyle = '#0a0e1a';
+  ctx.fillRect(0, 0, c.width, c.height);
+  drawGrid(ctx);
+  const d = buf.alt;
+  const mn = Math.min(...d, 0), mx = Math.max(...d, 1.5);
+  drawLine(ctx, d, '#00ff88', mn, mx);
+  // ligne 1m
+  if (mx > 0) {
+    const y = c.height - ((1 - mn) / (mx - mn)) * (c.height * 0.85) - c.height * 0.075;
+    ctx.setLineDash([4, 4]);
+    ctx.strokeStyle = '#ffffff22';
+    ctx.lineWidth = 1;
+    ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(c.width, y); ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.fillStyle = '#ffffff44'; ctx.font = '9px monospace';
+    ctx.fillText('1m', 4, y - 3);
+  }
+}
+
+// IMU
+function drawImu() {
+  const c   = document.getElementById('imu-canvas');
+  resizeCanvas(c);
+  const ctx = c.getContext('2d');
+  ctx.fillStyle = '#0a0e1a';
+  ctx.fillRect(0, 0, c.width, c.height);
+  drawGrid(ctx);
+  const all = [...buf.ax, ...buf.ay, ...buf.az];
+  const mn = Math.min(...all, -0.2), mx = Math.max(...all, 0.2);
+  drawLine(ctx, buf.ax, '#00d4ff', mn, mx);
+  drawLine(ctx, buf.ay, '#ff8c00', mn, mx);
+  drawLine(ctx, buf.az, '#00ff88', mn, mx);
+}
+
+// Euler
+function drawEuler() {
+  const c   = document.getElementById('euler-canvas');
+  resizeCanvas(c);
+  const ctx = c.getContext('2d');
+  ctx.fillStyle = '#0a0e1a';
+  ctx.fillRect(0, 0, c.width, c.height);
+  drawGrid(ctx);
+  const all = [...buf.roll, ...buf.pitch, ...buf.yaw];
+  const mn = Math.min(...all, -10), mx = Math.max(...all, 10);
+  drawLine(ctx, buf.roll,  '#00d4ff', mn, mx);
+  drawLine(ctx, buf.pitch, '#ff8c00', mn, mx);
+  drawLine(ctx, buf.yaw,   '#00ff88', mn, mx);
+
+  // Légende
+  ctx.font = '9px monospace';
+  [['roll', '#00d4ff', 0], ['pitch', '#ff8c00', 50], ['yaw', '#00ff88', 100]].forEach(([l, col, ox]) => {
+    ctx.fillStyle = col;
+    ctx.fillText(l, c.width - 130 + ox, c.height - 6);
+  });
+}
+
+// ── Boucle principale ─────────────────────────────────────────────────────────
+function loop() {
+  drawGps();
+  drawAlt();
+  drawImu();
+  drawEuler();
+
+  // Hz
+  const now_ = Date.now();
+  if (now_ - lastHz > 1000) {
+    document.getElementById('hz-label').textContent = msgCount + ' msg/s';
+    msgCount = 0; lastHz = now_;
+  }
+
+  requestAnimationFrame(loop);
+}
+
+loop();
+</script>
+</body>
+</html>
