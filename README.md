@@ -36,16 +36,18 @@ Plutôt qu'un filtre de Kalman étendu classique (qui linéarise localement et p
 ---
 
 ## 📂 Structure du projet
-├── main.py # Point d'entrée principal
-├── fusion/ # Implémentations des différents graphes de facteurs (FGO)
-├── control_scripts/ # Génération de trajectoires (carré, triangle, vertical, rotation)
-├── data_read/ # Lecture des données capteurs (GPS, IMU, odométrie, optical flow)
-├── plot_scripts/ # Génération des graphes de résultats (trajectoires, RMSE)
-├── vol_reel/ # Traitement des données de vol réel
-├── csv_files/ # Données capteurs enregistrées
-├── images/ # Figures et résultats visuels
-├── utils/ # Fonctions utilitaires
-└── dashboard.html # Tableau de bord de visualisation
+
+    ├── main.py              # Point d'entrée principal
+    ├── fusion/               # Implémentations des différents graphes de facteurs (FGO)
+    ├── control_scripts/      # Génération de trajectoires (carré, triangle, vertical, rotation)
+    ├── data_read/             # Lecture des données capteurs (GPS, IMU, odométrie, optical flow)
+    ├── plot_scripts/          # Génération des graphes de résultats (trajectoires, RMSE)
+    ├── vol_reel/               # Traitement des données de vol réel
+    ├── csv_files/               # Données capteurs enregistrées
+    ├── images/                 # Figures et résultats visuels
+    ├── utils/                   # Fonctions utilitaires
+    └── dashboard.html            # Tableau de bord de visualisation
+    
 
 ---
 
