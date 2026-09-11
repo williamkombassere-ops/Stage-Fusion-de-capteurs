@@ -82,6 +82,6 @@ En parallèle du logiciel, une partie du stage a été consacrée à l'assemblag
 
 ## 👤 Auteur
 
-**William Berenger Kombassere** — Stage Erasmus 2025-2026
+**William Berenger Kombassere** Stage Erasmus 2025-2026
 Encadré par Florin Stoican, Daniel IOAN, Radu Cioaca, laboratoire RE.PLAN, Universitatea POLITEHNICA din București (UPB)
 
