@@ -1,29 +1,4 @@
 #!/usr/bin/env python3
-"""
-fgo_uncoupled.py -- TRUE "uncoupled" GPS/IMU estimator.
-
-PROFESSOR'S CORRECTION (followed here):
-  "Uncoupled" does NOT mean running a factor graph on the GPS side.
-  Optimizing/fusing implies combining >= 2 sources of information --
-  with GPS alone, there is nothing to combine, so building a GTSAM
-  graph (Prior + Between factors) for GPS was an unnecessary, wrong
-  complication. The correct uncoupled logic is simply:
-
-      IF GPS available:      output = raw GPS measurement (no processing)
-      IF GPS NOT available:  output = IMU dead-reckoning (predict())
-
-  No factor graph, no optimization, anywhere on the GPS side. The IMU
-  side still uses GTSAM's preintegration (PreintegratedImuMeasurements
-  + predict()), because that's just numerical integration of raw
-  sensor data, not an optimization/fusion step.
-
-Real orientation and real velocity (from Gazebo's Odom) are used as
-the IMU's starting state during each outage -- this was requested by
-the professor specifically to isolate whether the remaining drift
-comes from IMU noise itself, independent of orientation/velocity
-estimation errors.
-"""
-
 import sys, os
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."))
 
@@ -176,13 +151,6 @@ def run_uncoupled(nom, gps_csv, imu_csv, odom_csv):
     for k in np.where(idxs_gps_hors_coupure)[0]:
         resultats.append((t_gps[k], dx[k], dy[k], dz[k], "GPS"))
 
-    # ============================================================
-    # STEP 2 -- GPS NOT AVAILABLE (outage): dead-reckon with the IMU.
-    # Starting position = the last RAW GPS point (no smoothing, no
-    # regression -- just the raw measurement, per the professor's
-    # "simple, no extra steps" instruction).
-    # predict() is plain numerical integration, not an optimizer.
-    # ============================================================
     for fdeb, ffin in fenetres:
         idxs_avant = np.where(t_gps < fdeb)[0]
         if len(idxs_avant) == 0:
@@ -273,18 +241,7 @@ def run_uncoupled(nom, gps_csv, imu_csv, odom_csv):
     plt.savefig(os.path.join(IMG_DIR, f"uncoupled_{nom}.pdf"))
     print(f"[Uncoupled] Figure sauvegardée")
 
-    # ---- DIAGNOSTIC FIGURE: pure IMU drift, offset removed ----
-    # Each IMU segment mixes (1) the starting-point offset (raw GPS
-    # noise), (2) the TRUE motion of the drone during the outage (e.g.
-    # a vertical flight climbs then descends -- not a straight line),
-    # and (3) the drift from integrating IMU noise twice. We want (3)
-    # only. Subtracting a 2-point straight line removes (1) but wrongly
-    # keeps/distorts (2) whenever the true trajectory isn't linear
-    # (typically visible on Z). Instead we subtract the TRUE trajectory
-    # (ground-truth Odom, already interpolated onto t_res as x/y/z_odom)
-    # point by point, then remove only the constant starting offset so
-    # every segment starts at 0 -- what remains is purely the noise-
-    # driven curvature (2), independent of (1) and (2)true-motion.
+    
     fig2, axes2 = plt.subplots(3, 1, figsize=(12, 8), sharex=True)
     fig2.suptitle(f"Dérive IMU pure (offset retiré) — {nom}", fontsize=11, fontweight="bold")
     for axi, (label, color, res_col, verite_col) in enumerate(zip(
